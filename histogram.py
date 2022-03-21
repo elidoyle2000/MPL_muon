@@ -64,17 +64,18 @@ def get_data(path, combineLandR=False, doPurify=False):
     p2_h = muon['peak2_heights']
     p1_t = muon['peak1_times']
     p2_t = muon['peak2_times']
+    if doPurify:
+        p1_h = purify(p1_h)
+        p2_h = purify(p2_h)
+        p1_t = purify(p1_t)
+        p2_t = purify(p2_t)
     if combineLandR:
         p1_h = combineLeftAndRight(p1_h)
         p2_h = combineLeftAndRight(p2_h)
         p1_t = combineLeftAndRight(p1_t)
         p2_t = combineLeftAndRight(p2_t)
     
-    if doPurify:
-        p1_h = purify(p1_h)
-        p2_h = purify(p2_h)
-        p1_t = purify(p1_t)
-        p2_t = purify(p2_t)
+
 
     return p1_h, p2_h, p1_t, p2_t
 
@@ -113,9 +114,9 @@ def graph5(path):
     print('lifetime =', round(constants[1], 3), '+/-', round(np.sqrt(covariance[1][1]), 3), 'us')
 
 
-def graph1(path, isGamma=False, doCombineLandR=False):
+def graph1(path, isGamma=False, doCombineLandR=False, doPurify=False):
     
-    p1_h, p2_h, p1_t, p2_t = get_data(path, combineLandR=doCombineLandR)
+    p1_h, p2_h, p1_t, p2_t = get_data(path, combineLandR=doCombineLandR, doPurify=doPurify)
 
 
     if not doCombineLandR:
@@ -291,22 +292,27 @@ def combineLeftAndRight(arr):
     return new_arr
 
 
-def purify(array):
-    
-
-
-
-
-    return
+def purify(array) -> List:
+    topFiresCondition:bool = (array[:, Channel.top] != 0)
+    topDoesntFireCondition:bool = (array[:, Channel.top] == 0)
+    leftFiresCondition:bool = (array[:, Channel.left] != 0)
+    leftDoesntFireCondition:bool = (array[:, Channel.left] == 0)
+    rightFiresCondition:bool = (array[:, Channel.right] != 0)
+    rightDoesntFireCondition:bool = (array[:, Channel.right] == 0)
+    bottomFiresCondition:bool = (array[:, Channel.bottom] != 0)
+    bottomDoesntFireCondition:bool = (array[:, Channel.bottom] == 0)
+    new_array = array[np.logical_and(topFiresCondition, np.logical_or(leftFiresCondition, rightFiresCondition))]
+    return new_array
 
 # blankButNotBlankFires(filename)
 # graph7(filename)
 # graph_double_event("finalData2/muon_data_14bit_10000_220315T1223.npy")
 
-all = graph1(filename) # FINAL GRAPH 1  
-gamma = graph1("gamma_data.npz", isGamma=True) # Gamma graph
-allCombined = graph1(filename, doCombineLandR=True) # FINAL GRAPH 1  
-gammaCombined = graph1("gamma_data.npz", isGamma=True, doCombineLandR=True) # Gamma graph
+doPurify:bool = False
+all = graph1(filename, doPurify=doPurify) # FINAL GRAPH 1  
+gamma = graph1("gamma_data.npz", isGamma=True, doPurify=doPurify) # Gamma graph
+allCombined = graph1(filename, doCombineLandR=True, doPurify=doPurify) # FINAL GRAPH 1  
+gammaCombined = graph1("gamma_data.npz", isGamma=True, doCombineLandR=True, doPurify=doPurify) # Gamma graph
 
 grid = gridplot(children = [[all, gamma], [allCombined, gammaCombined]], sizing_mode = 'stretch_both')
 show(grid)
