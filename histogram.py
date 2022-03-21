@@ -3,7 +3,7 @@ import numpy as np
 import os
 
 from bokeh.plotting import figure, show
-from bokeh.layouts import row
+from bokeh.layouts import row, gridplot
 from scipy.optimize import curve_fit
 
 # importing enum for enumerations
@@ -15,6 +15,7 @@ class channel():
         self.right = 1
         self.top = 2
         self.bottom = 3
+        self.leftAndRight = 0
 
 
 Channel = channel()
@@ -31,9 +32,13 @@ def make_plot(title, hist, edges, xlabel, ylabel):
     p.grid.grid_line_color = "white"
     return p
 
-def make_step_histogram(title:str, hists:List, channels:List[int], edgeses:List, xlabel:str, ylabel:str):
-    color_order = ["red", "green", "blue", "purple"]
-    label_order = ["Main left", "Main right", "Top", "Bottom"]
+def make_step_histogram(title:str, hists:List, channels:List[int], edgeses:List, xlabel:str, ylabel:str, LandRCombined:bool=False):
+    if LandRCombined:
+        color_order = ["magenta", "blue", "purple"]
+        label_order = ["Main left + Main right", "Top", "Bottom"]
+    else:
+        color_order = ["red", "green", "blue", "purple"]
+        label_order = ["Main left", "Main right", "Top", "Bottom"]
     p = figure(title=title, background_fill_color="#fafafa")
     p.y_range.start = 0
     p.x_range.start = -10
@@ -52,13 +57,25 @@ def make_step_histogram(title:str, hists:List, channels:List[int], edgeses:List,
 
     return p
 
-def get_data(path):
+def get_data(path, combineLandR=False, doPurify=False):
     # Use npz file
     muon = np.load(path)
     p1_h = muon['peak1_heights']
     p2_h = muon['peak2_heights']
     p1_t = muon['peak1_times']
     p2_t = muon['peak2_times']
+    if combineLandR:
+        p1_h = combineLeftAndRight(p1_h)
+        p2_h = combineLeftAndRight(p2_h)
+        p1_t = combineLeftAndRight(p1_t)
+        p2_t = combineLeftAndRight(p2_t)
+    
+    if doPurify:
+        p1_h = purify(p1_h)
+        p2_h = purify(p2_h)
+        p1_t = purify(p1_t)
+        p2_t = purify(p2_t)
+
     return p1_h, p2_h, p1_t, p2_t
 
 
@@ -95,20 +112,34 @@ def graph5(path):
     print(constants, np.sqrt(np.diag(covariance)))
     print('lifetime =', round(constants[1], 3), '+/-', round(np.sqrt(covariance[1][1]), 3), 'us')
 
-def graph1(path, isGamma=False):
-    p1_h, p2_h, p1_t, p2_t = get_data(path)
-    L_heights = p1_h[:, Channel.left]
-    R_heights = p1_h[:, Channel.right]
-    
-    histL, edges = np.histogram(L_heights, bins=40)
-    histR, edges = np.histogram(R_heights, bins=40)
 
-    if isGamma:
-        p = make_step_histogram('Energy histogram from main scintillator with gamma source', [histL, histR], [Channel.left, Channel.right], [edges, edges], 
-                    'energy (AU)', 'count / bin')
+def graph1(path, isGamma=False, doCombineLandR=False):
+    
+    p1_h, p2_h, p1_t, p2_t = get_data(path, combineLandR=doCombineLandR)
+
+
+    if not doCombineLandR:
+        L_heights = p1_h[:, Channel.left]
+        R_heights = p1_h[:, Channel.right]
+        histL, edges = np.histogram(L_heights, bins=40)
+        histR, edges = np.histogram(R_heights, bins=40)
+
+        if isGamma:
+            p = make_step_histogram('Energy histogram from main scintillator with gamma source', [histL, histR], [Channel.left, Channel.right], [edges, edges], 
+                        'voltage (mV)', 'count / bin', LandRCombined=doCombineLandR)
+        else:
+            p = make_step_histogram('Energy histogram from main scintillator', [histL, histR], [Channel.left, Channel.right], [edges, edges], 
+                        'voltage (mV)', 'count / bin', LandRCombined=doCombineLandR)
+    
     else:
-        p = make_step_histogram('Energy histogram from main scintillator', [histL, histR], [Channel.left, Channel.right], [edges, edges], 
-                    'energy (AU)', 'count / bin')
+        main_heights = p1_h[:, Channel.leftAndRight]
+        histMain, edges = np.histogram(main_heights, bins=40)
+        if isGamma:
+            p = make_step_histogram('Energy histogram from main scintillator with gamma source', [histMain], [Channel.leftAndRight], [edges], 
+                        'voltage (mV)', 'count / bin', LandRCombined=doCombineLandR)
+        else:
+            p = make_step_histogram('Energy histogram from main scintillator', [histMain], [Channel.leftAndRight], [edges], 
+                        'voltage (mV)', 'count / bin', LandRCombined=doCombineLandR)
 
     # show(p)
     return p
@@ -144,6 +175,66 @@ def graph4(path):
     show(p)
     # return p
 
+def graph7(path): 
+    p1_h, p2_h, p1_t, p2_t = get_data(path)
+    # isolate muon events that lead to decay measured by top
+    cond:bool = (p2_h[:, Channel.top] != 0)
+    top = p2_h[:,Channel.top][cond]
+
+    bottom = p2_h[:, Channel.bottom][cond]
+    numTopMeasuredDecay = top.shape[0]
+    numTopAndBottomMeasuredDecay = np.sum(np.where(bottom != 0, 1, 0))
+
+
+    x_labels = ["Top", "Top and Bottom"]
+    counts = [numTopMeasuredDecay, numTopAndBottomMeasuredDecay]
+
+    p = figure(title='Did bottom measure decay when top measured decay', background_fill_color="#fafafa", x_range=x_labels)
+    p.vbar(x=x_labels, top=counts, width=0.9)
+    # p.xaxis.axis_label = 'Top voltage (mV)'
+    p.yaxis.axis_label = 'Num events decay measured'
+    # p.scatter(top, bottom, size = 0.2)
+    show(p)
+
+
+
+def blankButNotBlankFires(path): 
+    p1_h, p2_h, p1_t, p2_t = get_data(path)
+    
+    topFiresCondition:bool = (p1_h[:, Channel.top] != 0)
+    topDoesntFireCondition:bool = (p1_h[:, Channel.top] == 0)
+    leftFiresCondition:bool = (p1_h[:, Channel.left] != 0)
+    leftDoesntFireCondition:bool = (p1_h[:, Channel.left] == 0)
+    rightFiresCondition:bool = (p1_h[:, Channel.right] != 0)
+    rightDoesntFireCondition:bool = (p1_h[:, Channel.right] == 0)
+    bottomFiresCondition:bool = (p1_h[:, Channel.bottom] != 0)
+    bottomDoesntFireCondition:bool = (p1_h[:, Channel.bottom] == 0)
+
+    print("Left but not right: ", np.sum(np.logical_and(leftFiresCondition, rightDoesntFireCondition)))
+    print("Right but not left: ", np.sum(np.logical_and(rightFiresCondition, leftDoesntFireCondition)))
+    
+    # should be zero
+    print("Left or right but not top: ", np.sum(np.logical_and(topDoesntFireCondition, np.logical_or(leftFiresCondition, rightFiresCondition))))
+
+    print("Top but not bottom: ", np.sum(np.logical_and(topFiresCondition, bottomDoesntFireCondition)))
+    # cond:bool = (p2_h[:, Channel.top] != 0)
+    # top = p2_h[:,Channel.top][cond]
+
+    # bottom = p2_h[:, Channel.bottom][cond]
+    # numTopMeasuredDecay = top.shape[0]
+    # numTopAndBottomMeasuredDecay = np.sum(np.where(bottom != 0, 1, 0))
+
+
+    # x_labels = ["Top", "Top and Bottom"]
+    # counts = [numTopMeasuredDecay, numTopAndBottomMeasuredDecay]
+
+    # p = figure(title='Did bottom measure decay when top measured decay', background_fill_color="#fafafa", x_range=x_labels)
+    # p.vbar(x=x_labels, top=counts, width=0.9)
+    # # p.xaxis.axis_label = 'Top voltage (mV)'
+    # p.yaxis.axis_label = 'Num events decay measured'
+    # # p.scatter(top, bottom, size = 0.2)
+    # show(p)
+
 folder = 'finalData2'
 filename = 'full_muon_data.npz'
 path = os.path.join(folder, filename)
@@ -156,11 +247,66 @@ Ch3 (D) Bottom Paddle<br>
 """
 
 # graph3(filename) # GRAPH 3
-graph4(filename) # GRAPH 4
+# graph4(filename) # GRAPH 4
 
 
+# graph7(filename)
 
-# all = graph1(filename) # FINAL GRAPH 1  
-# gamma = graph1("gamma_data.npz", isGamma=True) # Gamma graph
 
 # show(row(all, gamma))
+
+
+def graph_double_event(filename):
+    data = np.load(filename)
+    color_order = ["red", "green", "blue", "purple"]
+    label_order = ["Main left", "Main right", "Top", "Bottom"]
+    for i in range(data.shape[0]):
+        t = np.arange(0, 2700*8, 8)
+        event = data[i]
+        tAfterPeak1 = t[(1700//8):]
+        eventAfterPeak1 = event[:,(1700//8):]
+        maxAfterPeak1 = np.max(eventAfterPeak1)
+        tOfMaxAfterPeak1 = tAfterPeak1[np.argmax(np.max(eventAfterPeak1, 0))]
+        if maxAfterPeak1 > 100:
+            # t = np.arange(0, 2700*8, 8)
+            p = figure(title='Double peak event', background_fill_color="#fafafa")
+            p.xaxis.axis_label = 'time (ns)'
+            p.yaxis.axis_label = 'PMT voltage (mV)'
+            for c in range(4):
+                t_max = tOfMaxAfterPeak1 + 100
+                p.line(t[1550//8:t_max//8], event[c][1550//8:t_max//8], line_color=color_order[c], legend_label=label_order[c])
+            show(p)
+            # return
+            
+    print(filename)
+
+def combineLeftAndRight(arr):
+    new_arr = np.zeros((arr.shape[0], arr.shape[1] - 1))
+    new_arr[:,0] = arr[:,0] + arr[:,1]
+    new_arr[:,1] = arr[:,2]
+    new_arr[:,2] = arr[:,3]
+
+    new_arr = new_arr[new_arr[:,1]==0, :]
+
+    return new_arr
+
+
+def purify(array):
+    
+
+
+
+
+    return
+
+# blankButNotBlankFires(filename)
+# graph7(filename)
+# graph_double_event("finalData2/muon_data_14bit_10000_220315T1223.npy")
+
+all = graph1(filename) # FINAL GRAPH 1  
+gamma = graph1("gamma_data.npz", isGamma=True) # Gamma graph
+allCombined = graph1(filename, doCombineLandR=True) # FINAL GRAPH 1  
+gammaCombined = graph1("gamma_data.npz", isGamma=True, doCombineLandR=True) # Gamma graph
+
+grid = gridplot(children = [[all, gamma], [allCombined, gammaCombined]], sizing_mode = 'stretch_both')
+show(grid)

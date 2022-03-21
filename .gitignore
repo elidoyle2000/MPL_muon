@@ -131,3 +131,5 @@ dmypy.json
 # data files
 finalData2/
 gamma/
+full_muon_data.npz
+gamma_data.npz
