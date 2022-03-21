@@ -1,8 +1,8 @@
-from pydoc import doc
+import glob
+import time
 from typing import List
 import numpy as np
 import os
-from selenium import webdriver
 import chromedriver_binary  # Adds chromedriver binary to path
 
 
@@ -10,9 +10,11 @@ from bokeh.plotting import figure, show
 from bokeh.layouts import row, gridplot
 from scipy.optimize import curve_fit
 from bokeh.io import export_png
-# import imgkit
 
 from fetch_data import get_data, Channel
+
+min_right_border:int = 50
+num_bins:int = 40
  
 def make_plot(title, hist, edges, xlabel, ylabel):
     p = figure(title=title, background_fill_color="#fafafa")
@@ -26,7 +28,8 @@ def make_plot(title, hist, edges, xlabel, ylabel):
     p.grid.grid_line_color = "white"
     return p
 
-def make_step_histogram(title:str, hists:List, channels:List[int], edgeses:List, xlabel:str, ylabel:str, LandRCombined:bool=False):
+# what are you DOING step-histogram?! O_o
+def make_step_histogram(title:str, hists:List, channels:List[int], edgeses:List, xlabel:str, ylabel:str, LandRCombined:bool=False, proportion=True):
     if LandRCombined:
         color_order = ["magenta", "blue", "purple"]
         label_order = ["Main left + Main right", "Top", "Bottom"]
@@ -36,13 +39,20 @@ def make_step_histogram(title:str, hists:List, channels:List[int], edgeses:List,
     p = figure(title=title, background_fill_color="#fafafa")
     p.y_range.start = 0
     p.x_range.start = -10
-    p.xaxis.axis_label = xlabel
-    p.yaxis.axis_label = ylabel
+    if not proportion:
+        p.xaxis.axis_label = xlabel
+        p.yaxis.axis_label = ylabel
+    else:
+        p.xaxis.axis_label = xlabel
+        p.yaxis.axis_label = "Fraction of total events measured"
     p.grid.grid_line_color = "#fafafa"
 
     for i in range(len(channels)):
         c = channels[i]
-        hist = hists[i]
+        if proportion:
+            hist = hists[i] / np.sum(hists[i])
+        else:
+            hist = hists[i]
         edges = edgeses[i]
         hist = np.insert(hist, 0, [0])
         edges = np.insert(edges, 0, [0])
@@ -57,52 +67,53 @@ def lifetime(x, a, tau, bkg):
   return a * np.exp(-x/tau) + bkg
 
 
-# Take only incident on top (A) and then a main (B, C)
-
-def graph1(path, isGamma=False, doCombineLandR=False, doPurify=False, doShow=True):
+def graph1(path, isGamma=False, doCombineLeftAndRight=False, doPurify=False, doShow=True):
     
-    p1_h, p2_h, p1_t, p2_t = get_data(path, combineLandR=doCombineLandR, doPurify=doPurify)
+    p1_h, p2_h, p1_t, p2_t = get_data(path, combineLandR=doCombineLeftAndRight, doPurify=doPurify)
 
 
-    if not doCombineLandR:
+    if not doCombineLeftAndRight:
         L_heights = p1_h[:, Channel.left]
         R_heights = p1_h[:, Channel.right]
-        histL, edges = np.histogram(L_heights, bins=40)
-        histR, edges = np.histogram(R_heights, bins=40)
+        histL, edges = np.histogram(L_heights, bins=num_bins)
+        histR, edges = np.histogram(R_heights, bins=num_bins)
 
         if isGamma:
-            p = make_step_histogram('Energy histogram from main scintillator with gamma source', [histL, histR], [Channel.left, Channel.right], [edges, edges], 
-                        'voltage (mV)', 'count / bin', LandRCombined=doCombineLandR)
+            p = make_step_histogram('Energy histogram from main scintillator with gamma source\n(doCombineLeftAndRight: %s, doPurify: %s)'%(doCombineLeftAndRight, doPurify), [histL, histR], [Channel.left, Channel.right], [edges, edges], 
+                        'voltage (mV)', 'count / bin', LandRCombined=doCombineLeftAndRight)
         else:
-            p = make_step_histogram('Energy histogram from main scintillator', [histL, histR], [Channel.left, Channel.right], [edges, edges], 
-                        'voltage (mV)', 'count / bin', LandRCombined=doCombineLandR)
+            p = make_step_histogram('Energy histogram from main scintillator\n(doCombineLeftAndRight: %s, doPurify: %s)'%(doCombineLeftAndRight, doPurify), [histL, histR], [Channel.left, Channel.right], [edges, edges], 
+                        'voltage (mV)', 'count / bin', LandRCombined=doCombineLeftAndRight)
     
     else:
         main_heights = p1_h[:, Channel.leftAndRight]
-        histMain, edges = np.histogram(main_heights, bins=40)
+        histMain, edges = np.histogram(main_heights, bins=num_bins)
         if isGamma:
-            p = make_step_histogram('Energy histogram from main scintillator with gamma source', [histMain], [Channel.leftAndRight], [edges], 
-                        'voltage (mV)', 'count / bin', LandRCombined=doCombineLandR)
+            p = make_step_histogram('Energy histogram from main scintillator with gamma source\n(doCombineLeftAndRight: %s, doPurify: %s)'%(doCombineLeftAndRight, doPurify), [histMain], [Channel.leftAndRight], [edges], 
+                        'voltage (mV)', 'count / bin', LandRCombined=doCombineLeftAndRight)
         else:
-            p = make_step_histogram('Energy histogram from main scintillator', [histMain], [Channel.leftAndRight], [edges], 
-                        'voltage (mV)', 'count / bin', LandRCombined=doCombineLandR)
+            p = make_step_histogram('Energy histogram from main scintillator\n(doCombineLeftAndRight: %s, doPurify: %s)'%(doCombineLeftAndRight, doPurify), [histMain], [Channel.leftAndRight], [edges], 
+                        'voltage (mV)', 'count / bin', LandRCombined=doCombineLeftAndRight)
 
     if doShow:
         show(p)
+
+    p.min_border_right = min_right_border
     return p
 
 
 def graph3(path, doCombineLeftAndRight=False, doPurify=False, doShow=True):
     p1_h, p2_h, p1_t, p2_t = get_data(path, combineLandR=False, doPurify=doPurify)
-    L_heights = p1_h[:,0]
-    R_heights = p1_h[:,1]
+    L_heights = p1_h[:,Channel.left]
+    R_heights = p1_h[:,Channel.right]
 
-    p = figure(title='Left vs. Right Scintillator (doCombineLeftAndRight: %s    doPurify: %s)'%(False, doPurify), background_fill_color="#fafafa")
+    p = figure(title='Left vs. Right Scintillator\n(doCombineLeftAndRight: %s, doPurify: %s)'%(False, doPurify), background_fill_color="#fafafa")
     p.xaxis.axis_label = 'Left Scintillator Voltage (mV)'
     p.yaxis.axis_label = 'Right Scintillator Voltage (mV)'
     p.scatter(L_heights, R_heights, size = 0.2)
     if doShow:
         show(p)
+    p.min_border_right = min_right_border
     return p
 
 def graph4(path, doCombineLeftAndRight=False, doPurify=False, doShow=True):
@@ -114,24 +125,25 @@ def graph4(path, doCombineLeftAndRight=False, doPurify=False, doShow=True):
     if not doCombineLeftAndRight:
         cond:bool = (p1_h[:, Channel.top] != 0) & (p1_h[:, Channel.bottom] != 0)
         p1_h = p1_h[cond]
-        histL, edges = np.histogram(p1_h[:, Channel.left], bins=20)
-        histR, edges = np.histogram(p1_h[:, Channel.right], bins=20)
+        histL, edges = np.histogram(p1_h[:, Channel.left], bins=num_bins)
+        histR, edges = np.histogram(p1_h[:, Channel.right], bins=num_bins)
 
         
-        p = make_step_histogram('      Left and Right when through muon event\n(doCombineLeftAndRight: %s, doPurify: %s)'%(doCombineLeftAndRight, doPurify), [histL, histR], [Channel.left, Channel.right], [edges, edges], 
+        p = make_step_histogram('Through muon event\n(doCombineLeftAndRight: %s, doPurify: %s)'%(doCombineLeftAndRight, doPurify), [histL, histR], [Channel.left, Channel.right], [edges, edges], 
                     'voltage (mV)', 'count / bin')
 
     else:
         cond:bool = (p1_h[:, Channel.topAfterCombined] != 0) & (p1_h[:, Channel.bottomAfterCombined] != 0)
         p1_h = p1_h[cond]
-        histMain, edges = np.histogram(p1_h[:, Channel.leftAndRight], bins=20)
+        histMain, edges = np.histogram(p1_h[:, Channel.leftAndRight], bins=num_bins)
         
-        p = make_step_histogram('      Left and Right when through muon event\n(doCombineLeftAndRight: %s, doPurify: %s)'%(doCombineLeftAndRight, doPurify), [histMain], [Channel.leftAndRight], [edges], 
+        p = make_step_histogram('Through muon event\n(doCombineLeftAndRight: %s, doPurify: %s)'%(doCombineLeftAndRight, doPurify), [histMain], [Channel.leftAndRight], [edges], 
                     'voltage (mV)', 'count / bin', LandRCombined=True)
 
-    p.title.align = 'center'
+    # p.title.align = 'center'
     if doShow:
         show(p)
+    p.min_border_right = min_right_border
     return p
     # return p
 
@@ -139,11 +151,11 @@ def graph4(path, doCombineLeftAndRight=False, doPurify=False, doShow=True):
 def graph5(path, doCombineLeftAndRight=False, doPurify=False, doShow=True):
     p1_h, p2_h, p1_t, p2_t = get_data(path, combineLandR=doCombineLeftAndRight, doPurify=doPurify)
     # Both middle peaks
-    cond = (p2_h[:,0] != 0) & (p2_h[:,1] != 0) 
+    cond = (p2_h[:,Channel.left] != 0) & (p2_h[:,Channel.right] != 0) 
     event_dt = p2_t[:,0][cond] - 200*(8*10**-9)
     event_dt = event_dt * 10**6
     
-    hist, edges = np.histogram(event_dt, bins=20)
+    hist, edges = np.histogram(event_dt, bins=num_bins)
     p = make_plot('Second Peak Time Histogram (Channels A and B)', hist, edges, 
                 'time (us)', 'count / bin')
 
@@ -162,7 +174,52 @@ def graph5(path, doCombineLeftAndRight=False, doPurify=False, doShow=True):
     print('lifetime =', round(constants[1], 3), '+/-', round(np.sqrt(covariance[1][1]), 3), 'µs')
     if doShow:
         show(p)
+    p.min_border_right = min_right_border
     return p
+
+def graph6(path, doCombineLeftAndRight=True, doPurify=False, doShow=True):
+    doCombineLeftAndRight=True
+    # (6) Show the energy histogram (PMT1+2) of first pulse events (muon goes part way into scintillator) 
+    #     and second pulse events (from electron decay)
+    p1_h, p2_h, p1_t, p2_t = get_data(path, combineLandR=doCombineLeftAndRight, doPurify=doPurify)
+    
+    # first pulse: given that there is a second pulse, leftAndRight not 0
+    cond:bool = (p1_h[:, Channel.leftAndRight] != 0) & (p2_h[:, Channel.leftAndRight] != 0)
+    
+    p1_h = p1_h[cond]
+    p2_h = p2_h[cond]
+
+    main_heights_p1 = p1_h[:, Channel.leftAndRight]
+    main_heights_p2 = p2_h[:, Channel.leftAndRight]
+
+
+    p = figure(title='Energy histogram of first pulse vs. second pulse in double pulse events\n(doCombineLeftAndRight: %s, doPurify: %s)'%(doCombineLeftAndRight, doPurify), background_fill_color="#fafafa")
+    p.y_range.start = 0
+    p.x_range.start = -10
+    p.xaxis.axis_label = 'voltage (mV)'
+    p.yaxis.axis_label = 'count / bin'
+    p.grid.grid_line_color = "#fafafa"
+
+
+    
+    histMainP1, edges = np.histogram(main_heights_p1, bins=num_bins)
+    histMainP1 = np.insert(histMainP1, 0, [0])
+    edges = np.insert(edges, 0, [0])
+
+    p.step(edges[:-1], histMainP1, mode="after", line_width=2, color="blue", legend_label="1st peak (Main left + Main right)")
+
+    histMainP2, edges = np.histogram(main_heights_p2, bins=num_bins)
+    histMainP2 = np.insert(histMainP2, 0, [0])
+    edges = np.insert(edges, 0, [0])
+
+    p.step(edges[:-1], histMainP2, mode="after", line_width=1, color="green", legend_label="2nd peak (Main left + Main right)")
+
+    if doShow:
+        show(p)
+    p.min_border_right = min_right_border
+    return p
+
+
 
 def graph7(path, doCombineLeftAndRight=False, doPurify=False, doShow=True):
     p1_h, p2_h, p1_t, p2_t = get_data(path, combineLandR=doCombineLeftAndRight, doPurify=doPurify)
@@ -185,6 +242,7 @@ def graph7(path, doCombineLeftAndRight=False, doPurify=False, doShow=True):
     # p.scatter(top, bottom, size = 0.2)
     if doShow:
         show(p)
+    p.min_border_right = min_right_border
     return p
     
 
@@ -215,44 +273,6 @@ filename = 'full_muon_data.npz'
 path = os.path.join(folder, filename)
 
 
-# graph3(filename) # GRAPH 3
-# graph4(filename) # GRAPH 4
-
-
-# graph7(filename)
-
-
-# show(row(all, gamma))
-
-
-def graph_double_event(filename):
-    data = np.load(filename)
-    color_order = ["red", "green", "blue", "purple"]
-    label_order = ["Main left", "Main right", "Top", "Bottom"]
-    for i in range(data.shape[0]):
-        t = np.arange(0, 2700*8, 8)
-        event = data[i]
-        tAfterPeak1 = t[(1700//8):]
-        eventAfterPeak1 = event[:,(1700//8):]
-        maxAfterPeak1 = np.max(eventAfterPeak1)
-        tOfMaxAfterPeak1 = tAfterPeak1[np.argmax(np.max(eventAfterPeak1, 0))]
-        if maxAfterPeak1 > 100:
-            # t = np.arange(0, 2700*8, 8)
-            p = figure(title='Double peak event', background_fill_color="#fafafa")
-            p.xaxis.axis_label = 'time (ns)'
-            p.yaxis.axis_label = 'PMT voltage (mV)'
-            for c in range(4):
-                t_max = tOfMaxAfterPeak1 + 100
-                p.line(t[1550//8:t_max//8], event[c][1550//8:t_max//8], line_color=color_order[c], legend_label=label_order[c])
-            show(p)
-            # return
-            
-    print(filename)
-
-# blankButNotBlankFires(filename)
-# graph7(filename)
-# graph_double_event("finalData2/muon_data_14bit_10000_220315T1223.npy")
-
 def all4plots(function, filename):
     normal =        function(filename, doCombineLeftAndRight=False, doPurify=False, doShow=False)
     onlyPurify =    function(filename, doCombineLeftAndRight=False, doPurify=True,  doShow=False)
@@ -261,20 +281,40 @@ def all4plots(function, filename):
 
 
     grid = gridplot(children = [[normal, onlyPurify], [onlyCombine, both]])#, sizing_mode = "fixed")#'stretch_both')
-    export_png(grid, filename=function.__name__ + ".png")
+    export_png(grid, filename="graphs/" + function.__name__ + "_combine_purify_effect.png")
     # show(grid)
     
-    # out = imgkit.from_file("histogram.html", function.__name__ + "2.png")
     
 
 
-# doPurify:bool = True
-# all = graph1(filename, doPurify=doPurify) # FINAL GRAPH 1  
-# gamma = graph1("gamma_data.npz", isGamma=True, doPurify=doPurify) # Gamma graph
-# allCombined = graph1(filename, doCombineLandR=True, doPurify=doPurify) # FINAL GRAPH 1  
-# gammaCombined = graph1("gamma_data.npz", isGamma=True, doCombineLandR=True, doPurify=doPurify) # Gamma graph
+def generateGraphs1and2():
+    doPurify:bool = False
+    all =               graph1(filename,            isGamma=False,  doCombineLeftAndRight=False,    doPurify=doPurify, doShow=False) # FINAL GRAPH 1  
+    gamma =             graph1("gamma_data.npz",    isGamma=True,   doCombineLeftAndRight=False,    doPurify=doPurify, doShow=False) # Gamma graph
+    allCombined =       graph1(filename,            isGamma=False,  doCombineLeftAndRight=True,     doPurify=doPurify, doShow=False) # FINAL GRAPH 1  
+    gammaCombined =     graph1("gamma_data.npz",    isGamma=True,   doCombineLeftAndRight=True,     doPurify=doPurify, doShow=False) # Gamma graph
 
-# grid = gridplot(children = [[all, gamma], [allCombined, gammaCombined]], sizing_mode = 'stretch_both')
-# show(grid)
+    grid = gridplot(children = [[all, gamma], [allCombined, gammaCombined]])#, sizing_mode = 'stretch_both')
+    show(grid)
+    export_png(grid, filename="graphs/graph1and2_grid_purify_%s_proportions.png" % doPurify)
 
-all4plots(graph4, filename)
+def generateGraph3():
+    purifyFalse =    graph3(filename, doCombineLeftAndRight=False, doPurify=False, doShow=False)
+    purifyTrue =     graph3(filename, doCombineLeftAndRight=False, doPurify=True,  doShow=False)
+    r = row(children = [purifyFalse, purifyTrue])
+    show(r)
+    export_png(r, filename="graphs/graph3_row.png")
+
+def generateGraph6():
+    noPurify = graph6(filename, doPurify=False, doShow=False)
+    purify =   graph6(filename, doPurify=True,  doShow=False)
+    r = row(children = [noPurify, purify])
+    show(r)
+    export_png(r, filename="graphs/graph6_combine_purify_effect.png")
+
+# all4plots(graph3, filename)
+
+# generateGraphs1and2()
+# generateGraph3()
+generateGraph6()
+

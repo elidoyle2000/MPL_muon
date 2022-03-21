@@ -1,9 +1,11 @@
 import os
+import time
 import numpy as np
 from scipy.signal import find_peaks
 from bokeh.plotting import figure, show
 from tqdm import tqdm
 import glob
+import matplotlib.pyplot as plt
 
 
 
@@ -107,10 +109,12 @@ def process_all(folder, outname):
     peak2_heights = np.zeros((total_num_incidents, 4))
     peak1_times = np.zeros((total_num_incidents, 4))
     peak2_times = np.zeros((total_num_incidents, 4))
-
     path = os.path.join(folder, '*.npy')
     filenames = glob.glob(path)
     filenames.sort()
+
+    sorted_file_index = np.zeros(total_num_incidents)
+    index_in_file = np.zeros(total_num_incidents)
     past = 0
     for i, filename in enumerate(tqdm(filenames)):
         p1_h, p2_h, p1_t, p2_t = process_file(filename)
@@ -118,12 +122,14 @@ def process_all(folder, outname):
         peak2_heights[past:past+data_lengths[i]] = p2_h
         peak1_times[past:past+data_lengths[i]] = p1_t
         peak2_times[past:past+data_lengths[i]] = p2_t
+        sorted_file_index[past:past+data_lengths[i]] = np.full(data_lengths[i], i)
+        index_in_file[past:past+data_lengths[i]] = np.arange(0, data_lengths[i])
         
         # This line wasn't here
         past += data_lengths[i]
 
     np.savez(outname, peak1_heights=peak1_heights, peak2_heights=peak2_heights,
-    peak1_times=peak1_times, peak2_times=peak2_times)
+    peak1_times=peak1_times, peak2_times=peak2_times, sorted_file_index=sorted_file_index, index_in_file=index_in_file)
 
 
 
@@ -143,7 +149,7 @@ def find_data_length(folder):
     return data_lengths, sum(data_lengths)
 
 # "muon_data_14bit_gamma_threshold_80.npy")
-process_all('gamma', 'gamma_data.npz')
+
 # process_all('finalData2', 'full_muon_data.npz')
 # print(np.load('full_muon_data.npz').files)#['peak1_heights'].shape)
 # graph('full_muon_data.npz', 32)
@@ -151,5 +157,77 @@ process_all('gamma', 'gamma_data.npz')
 # P2 32 (200),118 (100),99737 (620)
 
 
+# process_all('gamma', 'gamma_data.npz')
 
 
+class channel():
+    def __init__(self) -> None:
+        self.left = 0
+        self.right = 1
+        self.top = 2
+        self.bottom = 3
+        self.leftAndRight = 0
+        self.topAfterCombined = 1
+        self.bottomAfterCombined = 2
+
+        self.A = 0
+        self.B = 1
+        self.C = 2
+        self.D = 3
+
+
+Channel = channel()
+def getDoubles(p1_h, p2_h, p1_t, p2_t):
+
+    topFiresCondition:bool = (p1_h[:, Channel.top] != 0)
+    topDoesntFireCondition:bool = (p1_h[:, Channel.top] == 0)
+    topFiresTwiceCondition:bool = (p2_h[:, Channel.top] != 0)
+    topDoesntFireTwiceCondition:bool = (p2_h[:, Channel.top] == 0)
+
+    leftFiresCondition:bool = (p1_h[:, Channel.left] != 0)
+    leftDoesntFireCondition:bool = (p1_h[:, Channel.left] == 0)
+    leftFiresTwiceCondition:bool = (p2_h[:, Channel.left] != 0)
+    leftDoesntFireTwiceCondition:bool = (p2_h[:, Channel.left] == 0)
+
+    rightFiresCondition:bool = (p1_h[:, Channel.right] != 0)
+    rightDoesntFireCondition:bool = (p1_h[:, Channel.right] == 0)
+    rightFiresTwiceCondition:bool = (p2_h[:, Channel.right] != 0)
+    rightDoesntFireTwiceCondition:bool = (p2_h[:, Channel.right] == 0)
+
+    bottomFiresCondition:bool = (p1_h[:, Channel.bottom] != 0)
+    bottomDoesntFireCondition:bool = (p1_h[:, Channel.bottom] == 0)
+    bottomFiresTwiceCondition:bool = (p2_h[:, Channel.bottom] != 0)
+    bottomDoesntFireTwiceCondition:bool = (p2_h[:, Channel.bottom] == 0)
+
+    conditionArray = (topFiresCondition & (leftFiresTwiceCondition | rightFiresTwiceCondition) & bottomDoesntFireCondition)
+    return conditionArray
+
+def make_doubles_subplots(n, conditionArray):
+    num_events = 36
+    muon = np.load('finalData2/muon_data_14bit_'+str(n)+'.npy')
+    muon = muon[conditionArray]
+    t = np.linspace(0, 2700*8, 2700) # 2700 points between 0 and 2700*8
+
+    for i in range(0, muon.shape[0], 100): # batch 
+        print('Graphing subplots %d to %d for file %s' % (i, i+99, str(n)))
+        fig, ax = plt.subplots(10, 10, sharex=True, sharey=True)
+        for j in range(num_events):
+            eventNum = i + j
+            event = muon[eventNum]
+            thisAx = np.reshape(ax, -1)[j]
+            thisAx.set_xlim(1550,2000)#1850)
+            # thisAx.axis('off')
+            thisAx.set_xticks([])
+            thisAx.set_yticks([])
+            thisAx.plot(t, event[0,:])#, label='Ch A: Left')
+            thisAx.plot(t, event[1,:])#, label='Ch B: Right')
+            thisAx.plot(t, event[2,:])#, label='Ch C: Top')
+            thisAx.plot(t, event[3,:])#, label='Ch D: Bottom')
+        
+        # plt.xlabel('Time (ns)')
+        # plt.ylabel('Voltage (mV)')
+        # plt.legend()
+        plt.show()
+
+
+# make_doubles_subplots("10000_220315T1358", getDoubles(peak1_heights, peak2_heights, peak1_times, peak2_times))

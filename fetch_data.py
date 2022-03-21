@@ -32,23 +32,34 @@ def combineLeftAndRight(arr):
     new_arr[:,1] = arr[:,2]
     new_arr[:,2] = arr[:,3]
 
-    new_arr = new_arr[new_arr[:,0]!=0, :]
+    # new_arr = new_arr[new_arr[:,0]!=0, :]
 
     return new_arr
 
 
 def purify(p1_h, p2_h, p1_t, p2_t) -> List:
 
-    topFiresCondition:bool = (p1_h[:, Channel.top] != 0)
-    topDoesntFireCondition:bool = (p1_h[:, Channel.top] == 0)
-    leftFiresCondition:bool = (p1_h[:, Channel.left] != 0)
-    leftDoesntFireCondition:bool = (p1_h[:, Channel.left] == 0)
-    rightFiresCondition:bool = (p1_h[:, Channel.right] != 0)
-    rightDoesntFireCondition:bool = (p1_h[:, Channel.right] == 0)
-    bottomFiresCondition:bool = (p1_h[:, Channel.bottom] != 0)
-    bottomDoesntFireCondition:bool = (p1_h[:, Channel.bottom] == 0)
+    topFiresCondition:bool =                    (p1_h[:, Channel.top] != 0)
+    topDoesntFireCondition:bool =               (p1_h[:, Channel.top] == 0)
+    topFiresTwiceCondition:bool =               (p2_h[:, Channel.top] != 0)
+    topDoesntFireTwiceCondition:bool =          (p2_h[:, Channel.top] == 0)
 
-    conditionArray = np.logical_and(topFiresCondition, np.logical_or(leftFiresCondition, rightFiresCondition))
+    leftFiresCondition:bool =                   (p1_h[:, Channel.left] != 0)
+    leftDoesntFireCondition:bool =              (p1_h[:, Channel.left] == 0)
+    leftFiresTwiceCondition:bool =              (p2_h[:, Channel.left] != 0)
+    leftDoesntFireTwiceCondition:bool =         (p2_h[:, Channel.left] == 0)
+
+    rightFiresCondition:bool =                  (p1_h[:, Channel.right] != 0)
+    rightDoesntFireCondition:bool =             (p1_h[:, Channel.right] == 0)
+    rightFiresTwiceCondition:bool =             (p2_h[:, Channel.right] != 0)
+    rightDoesntFireTwiceCondition:bool =        (p2_h[:, Channel.right] == 0)
+
+    bottomFiresCondition:bool =                 (p1_h[:, Channel.bottom] != 0)
+    bottomDoesntFireCondition:bool =            (p1_h[:, Channel.bottom] == 0)
+    bottomFiresTwiceCondition:bool =            (p2_h[:, Channel.bottom] != 0)
+    bottomDoesntFireTwiceCondition:bool =       (p2_h[:, Channel.bottom] == 0)
+
+    conditionArray = topFiresCondition & (leftFiresCondition | rightFiresCondition)
 
     new_p1_h = p1_h[conditionArray]
     new_p2_h = p2_h[conditionArray]
