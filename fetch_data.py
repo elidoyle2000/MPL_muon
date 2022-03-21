@@ -14,6 +14,8 @@ class channel():
         self.top = 2
         self.bottom = 3
         self.leftAndRight = 0
+        self.topAfterCombined = 1
+        self.bottomAfterCombined = 2
 
         self.A = 0
         self.B = 1
