@@ -75,14 +75,23 @@ def graph1(path, isGamma=False, doCombineLeftAndRight=False, doPurify=False, doS
     if not doCombineLeftAndRight:
         L_heights = p1_h[:, Channel.left]
         R_heights = p1_h[:, Channel.right]
-        histL, edges = np.histogram(L_heights, bins=num_bins)
-        histR, edges = np.histogram(R_heights, bins=num_bins)
+        
+        if np.max(L_heights) > np.max(R_heights):
+            R_heights = np.append(R_heights, np.max(L_heights))
+        elif np.max(L_heights) < np.max(R_heights):
+            L_heights = np.append(L_heights, np.max(R_heights))
+
+        histL, edges1 = np.histogram(L_heights, bins=num_bins)
+        histR, edges2 = np.histogram(R_heights, bins=num_bins)
+
+        histL, edges1 = np.histogram(L_heights, bins=num_bins)
+        histR, edges2 = np.histogram(R_heights, bins=num_bins)
 
         if isGamma:
-            p = make_step_histogram('Energy histogram from main scintillator with gamma source\n(doCombineLeftAndRight: %s, doPurify: %s)'%(doCombineLeftAndRight, doPurify), [histL, histR], [Channel.left, Channel.right], [edges, edges], 
+            p = make_step_histogram('Energy histogram from main scintillator with gamma source\n(doCombineLeftAndRight: %s, doPurify: %s)'%(doCombineLeftAndRight, doPurify), [histL, histR], [Channel.left, Channel.right], [edges1, edges2], 
                         'voltage (mV)', 'count / bin', LandRCombined=doCombineLeftAndRight)
         else:
-            p = make_step_histogram('Energy histogram from main scintillator\n(doCombineLeftAndRight: %s, doPurify: %s)'%(doCombineLeftAndRight, doPurify), [histL, histR], [Channel.left, Channel.right], [edges, edges], 
+            p = make_step_histogram('Energy histogram from main scintillator\n(doCombineLeftAndRight: %s, doPurify: %s)'%(doCombineLeftAndRight, doPurify), [histL, histR], [Channel.left, Channel.right], [edges1, edges2], 
                         'voltage (mV)', 'count / bin', LandRCombined=doCombineLeftAndRight)
     
     else:
@@ -133,12 +142,20 @@ def graph4(path, doCombineLeftAndRight=False, doPurify=False, doShow=True, throu
         else:
             cond:bool = (p1_h[:, Channel.top] != 0) & (p1_h[:, Channel.bottom] == 0)
         p1_h = p1_h[cond]
-        histL, edges = np.histogram(p1_h[:, Channel.left], bins=num_bins)
-        histR, edges = np.histogram(p1_h[:, Channel.right], bins=num_bins)
+
+        L_heights = p1_h[:, Channel.left]
+        R_heights = p1_h[:, Channel.right]
+        if np.max(L_heights) > np.max(R_heights):
+            R_heights = np.append(R_heights, np.max(L_heights))
+        elif np.max(L_heights) < np.max(R_heights):
+            L_heights = np.append(L_heights, np.max(R_heights))
+
+        histL, edges1 = np.histogram(L_heights, bins=num_bins)
+        histR, edges2 = np.histogram(R_heights, bins=num_bins)
+
+        p = make_step_histogram(title, [histL, histR], [Channel.left, Channel.right], [edges1, edges2], 'voltage (mV)', 'count / bin')
 
         
-        p = make_step_histogram(title, [histL, histR], [Channel.left, Channel.right], [edges, edges], 
-                    'voltage (mV)', 'count / bin')
 
     else:
         if through:
@@ -152,12 +169,10 @@ def graph4(path, doCombineLeftAndRight=False, doPurify=False, doShow=True, throu
         p = make_step_histogram(title, [histMain], [Channel.leftAndRight], [edges], 
                     'voltage (mV)', 'count / bin', LandRCombined=True)
 
-    # p.title.align = 'center'
     if doShow:
         show(p)
     p.min_border_right = min_right_border
     return p
-    # return p
 
 # Incident on left and right
 def graph5(path, doCombineLeftAndRight=False, doPurify=False, doShow=True):
@@ -218,6 +233,8 @@ def graph6(path, doCombineLeftAndRight=True, doPurify=False, doShow=True):
     histMainP1 = np.insert(histMainP1, 0, [0])
     edges = np.insert(edges, 0, [0])
 
+    
+
     p.step(edges[:-1], histMainP1, mode="after", line_width=2, color="blue", legend_label="1st peak (Main left + Main right)")
 
     histMainP2, edges = np.histogram(main_heights_p2, bins=num_bins)
@@ -236,19 +253,34 @@ def graph6(path, doCombineLeftAndRight=True, doPurify=False, doShow=True):
 def graph7(path, doCombineLeftAndRight=False, doPurify=False, doShow=True):
     p1_h, p2_h, p1_t, p2_t = get_data(path, combineLandR=doCombineLeftAndRight, doPurify=doPurify)
     # isolate muon events that lead to decay measured by top
-    cond:bool = (p2_h[:, Channel.top] != 0)
-    top = p2_h[:,Channel.top][cond]
 
-    bottom = p2_h[:, Channel.bottom][cond]
-    numTopMeasuredDecay = top.shape[0]
-    numTopAndBottomMeasuredDecay = len(np.nonzero(bottom))
-                                 # np.sum(np.where(bottom != 0, 1, 0))
+    if False:
+        cond:bool = (p2_h[:, Channel.top] != 0)
+        
+        top = p2_h[:,Channel.top][cond]
+
+        bottom = p2_h[:, Channel.bottom][cond]
+        numTopMeasuredDecay = top.shape[0]
+        numTopAndBottomMeasuredDecay = len(np.nonzero(bottom))
+                                    # np.sum(np.where(bottom != 0, 1, 0))
 
 
-    x_labels = ["Top", "Top and Bottom"]
-    counts = [numTopMeasuredDecay, numTopAndBottomMeasuredDecay]
+        x_labels = ["Top", "Top and Bottom"]
+        counts = [numTopMeasuredDecay, numTopAndBottomMeasuredDecay]
+        p = figure(title='Did bottom measure decay when top measured decay', background_fill_color="#fafafa", x_range=x_labels)
+    else:
+        cond:bool = (p2_h[:, Channel.bottom] != 0)
+        top = p2_h[:,Channel.top][cond]
+        bottom = p2_h[:, Channel.bottom][cond]
+        numBottomMeasuredDecay = bottom.shape[0]
+        numTopAndBottomMeasuredDecay = len(np.nonzero(top))
+                                    # np.sum(np.where(bottom != 0, 1, 0))
 
-    p = figure(title='Did bottom measure decay when top measured decay', background_fill_color="#fafafa", x_range=x_labels)
+
+        x_labels = ["Bottom", "Top and Bottom"]
+        counts = [numBottomMeasuredDecay, numTopAndBottomMeasuredDecay]
+
+        p = figure(title='Did top measure decay when bottom measured decay', background_fill_color="#fafafa", x_range=x_labels)
     p.vbar(x=x_labels, top=counts, width=0.9)
     # p.xaxis.axis_label = 'Top voltage (mV)'
     p.yaxis.axis_label = 'Num events decay measured'
@@ -300,7 +332,7 @@ def all4plots(function, filename):
 
 
 def generateFinalGraphs1and2():
-    doPurify:bool = False
+    doPurify:bool = True
     all =               graph1(filename,            isGamma=False,  doCombineLeftAndRight=False,    doPurify=doPurify, doShow=False) # FINAL GRAPH 1  
     gamma =             graph1("gamma_data.npz",    isGamma=True,   doCombineLeftAndRight=False,    doPurify=doPurify, doShow=False) # Gamma graph
     allCombined =       graph1(filename,            isGamma=False,  doCombineLeftAndRight=True,     doPurify=doPurify, doShow=False) # FINAL GRAPH 1  
@@ -340,14 +372,14 @@ def generateFinalGraph6():
 def generateFinalGraph7():
     g = graph7(filename, doCombineLeftAndRight=False, doPurify=False, doShow=False)
     show(g)
-    export_png(g, filename="graphs/graph7_bar_graph.png")
+    export_png(g, filename="graphs/graph7_alternate_bar_graph.png")
 
 # all4plots(graph3, filename)
 
-# generateFinalGraphs1and2()
+generateFinalGraphs1and2()
 # generateFinalGraph3()
 # generateFinalGraph4()
-generateFinalGraph5()
+# generateFinalGraph5()
 # generateFinalGraph6()
 # generateFinalGraph7()
 
