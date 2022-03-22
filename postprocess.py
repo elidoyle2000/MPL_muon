@@ -52,6 +52,10 @@ def get_peak_info(muon, num):
     C_info = find_peaks(event[2,:], height=peak2threshhold)
     D_info = find_peaks(event[3,:], height=peak2threshhold)
 
+    plt.plot(np.arange(0,2700*8,8), event[0,:])
+    plt.show()
+    plt.clf()
+
     peak_heights = [A_info[1]['peak_heights'],B_info[1]['peak_heights'],
     C_info[1]['peak_heights'],D_info[1]['peak_heights']]
     peak_times = [A_info[0],B_info[0],C_info[0],D_info[0]]

@@ -116,28 +116,40 @@ def graph3(path, doCombineLeftAndRight=False, doPurify=False, doShow=True):
     p.min_border_right = min_right_border
     return p
 
-def graph4(path, doCombineLeftAndRight=False, doPurify=False, doShow=True):
+def graph4(path, doCombineLeftAndRight=False, doPurify=False, doShow=True, through=False):
     p1_h, p2_h, p1_t, p2_t = get_data(path, combineLandR=doCombineLeftAndRight, doPurify=doPurify)
 
     # (4) Show that events that have signal in PMT-Top and PMT-Bottom 
     #     have large energy in PMT1+2. These are vertical through going muons.
+    
+    if through:
+        title = 'Through muon events peak height\n(doCombineLeftAndRight: %s, doPurify: %s)'%(doCombineLeftAndRight, doPurify)
+    else:
+        title = 'All muon events first peak height\n(doCombineLeftAndRight: %s, doPurify: %s)'%(doCombineLeftAndRight, doPurify)
 
     if not doCombineLeftAndRight:
-        cond:bool = (p1_h[:, Channel.top] != 0) & (p1_h[:, Channel.bottom] != 0)
+        if through:
+            cond:bool = (p1_h[:, Channel.top] != 0) & (p1_h[:, Channel.bottom] != 0)
+        else:
+            cond:bool = (p1_h[:, Channel.top] != 0) & (p1_h[:, Channel.bottom] == 0)
         p1_h = p1_h[cond]
         histL, edges = np.histogram(p1_h[:, Channel.left], bins=num_bins)
         histR, edges = np.histogram(p1_h[:, Channel.right], bins=num_bins)
 
         
-        p = make_step_histogram('Through muon event\n(doCombineLeftAndRight: %s, doPurify: %s)'%(doCombineLeftAndRight, doPurify), [histL, histR], [Channel.left, Channel.right], [edges, edges], 
+        p = make_step_histogram(title, [histL, histR], [Channel.left, Channel.right], [edges, edges], 
                     'voltage (mV)', 'count / bin')
 
     else:
-        cond:bool = (p1_h[:, Channel.topAfterCombined] != 0) & (p1_h[:, Channel.bottomAfterCombined] != 0)
+        if through:
+            cond:bool = (p1_h[:, Channel.topAfterCombined] != 0) & (p1_h[:, Channel.bottomAfterCombined] != 0)
+        else:
+            cond:bool = (p1_h[:, Channel.topAfterCombined] != 0) & (p1_h[:, Channel.bottomAfterCombined] == 0)
+        
         p1_h = p1_h[cond]
         histMain, edges = np.histogram(p1_h[:, Channel.leftAndRight], bins=num_bins)
         
-        p = make_step_histogram('Through muon event\n(doCombineLeftAndRight: %s, doPurify: %s)'%(doCombineLeftAndRight, doPurify), [histMain], [Channel.leftAndRight], [edges], 
+        p = make_step_histogram(title, [histMain], [Channel.leftAndRight], [edges], 
                     'voltage (mV)', 'count / bin', LandRCombined=True)
 
     # p.title.align = 'center'
@@ -156,8 +168,8 @@ def graph5(path, doCombineLeftAndRight=False, doPurify=False, doShow=True):
     event_dt = event_dt * 10**6
     
     hist, edges = np.histogram(event_dt, bins=num_bins)
-    p = make_plot('Second Peak Time Histogram (Channels A and B)', hist, edges, 
-                'time (us)', 'count / bin')
+    p = make_plot('Second Peak Time After First Peak Histogram (Channels A and B)', hist, edges, 
+                'time (µs)', 'count / bin')
 
     bin_center = ((edges[1:]+edges[:-1])/2)[hist!=0]
     hist = hist[hist!=0]
@@ -229,7 +241,8 @@ def graph7(path, doCombineLeftAndRight=False, doPurify=False, doShow=True):
 
     bottom = p2_h[:, Channel.bottom][cond]
     numTopMeasuredDecay = top.shape[0]
-    numTopAndBottomMeasuredDecay = np.sum(np.where(bottom != 0, 1, 0))
+    numTopAndBottomMeasuredDecay = len(np.nonzero(bottom))
+                                 # np.sum(np.where(bottom != 0, 1, 0))
 
 
     x_labels = ["Top", "Top and Bottom"]
@@ -273,6 +286,7 @@ filename = 'full_muon_data.npz'
 path = os.path.join(folder, filename)
 
 
+
 def all4plots(function, filename):
     normal =        function(filename, doCombineLeftAndRight=False, doPurify=False, doShow=False)
     onlyPurify =    function(filename, doCombineLeftAndRight=False, doPurify=True,  doShow=False)
@@ -283,11 +297,9 @@ def all4plots(function, filename):
     grid = gridplot(children = [[normal, onlyPurify], [onlyCombine, both]])#, sizing_mode = "fixed")#'stretch_both')
     export_png(grid, filename="graphs/" + function.__name__ + "_combine_purify_effect.png")
     # show(grid)
-    
-    
 
 
-def generateGraphs1and2():
+def generateFinalGraphs1and2():
     doPurify:bool = False
     all =               graph1(filename,            isGamma=False,  doCombineLeftAndRight=False,    doPurify=doPurify, doShow=False) # FINAL GRAPH 1  
     gamma =             graph1("gamma_data.npz",    isGamma=True,   doCombineLeftAndRight=False,    doPurify=doPurify, doShow=False) # Gamma graph
@@ -298,23 +310,44 @@ def generateGraphs1and2():
     show(grid)
     export_png(grid, filename="graphs/graph1and2_grid_purify_%s_proportions.png" % doPurify)
 
-def generateGraph3():
-    purifyFalse =    graph3(filename, doCombineLeftAndRight=False, doPurify=False, doShow=False)
-    purifyTrue =     graph3(filename, doCombineLeftAndRight=False, doPurify=True,  doShow=False)
+def generateFinalGraph3():
+    purifyFalse =       graph3(filename, doCombineLeftAndRight=False, doPurify=False, doShow=False)
+    purifyTrue =        graph3(filename, doCombineLeftAndRight=False, doPurify=True,  doShow=False)
     r = row(children = [purifyFalse, purifyTrue])
     show(r)
     export_png(r, filename="graphs/graph3_row.png")
 
-def generateGraph6():
+def generateFinalGraph4():
+    throughPurifyFalse =       graph4(filename, doCombineLeftAndRight=False, doPurify=False, doShow=False, through=True)
+    # purifyTrue =        graph4(filename, doCombineLeftAndRight=True, doPurify=True,  doShow=False)
+    stoppedPurifyFalse =       graph4(filename, doCombineLeftAndRight=False, doPurify=False, doShow=False, through=False)
+    r = row(children = [throughPurifyFalse, stoppedPurifyFalse])
+    show(r)
+    export_png(r, filename="graphs/graph4_row.png")
+
+def generateFinalGraph5():
+    g = graph5(filename, doCombineLeftAndRight=False, doPurify=False, doShow=False)
+    show(g)
+    export_png(g, filename="graphs/graph5.png")
+
+def generateFinalGraph6():
     noPurify = graph6(filename, doPurify=False, doShow=False)
     purify =   graph6(filename, doPurify=True,  doShow=False)
     r = row(children = [noPurify, purify])
     show(r)
     export_png(r, filename="graphs/graph6_combine_purify_effect.png")
 
+def generateFinalGraph7():
+    g = graph7(filename, doCombineLeftAndRight=False, doPurify=False, doShow=False)
+    show(g)
+    export_png(g, filename="graphs/graph7_bar_graph.png")
+
 # all4plots(graph3, filename)
 
-# generateGraphs1and2()
-# generateGraph3()
-generateGraph6()
+# generateFinalGraphs1and2()
+# generateFinalGraph3()
+# generateFinalGraph4()
+generateFinalGraph5()
+# generateFinalGraph6()
+# generateFinalGraph7()
 
